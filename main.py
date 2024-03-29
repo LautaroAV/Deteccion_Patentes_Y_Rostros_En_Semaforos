@@ -14,12 +14,13 @@ detector_patentes = YOLO("./models/best.pt")
 vehiculos = [2, 3, 5, 7]
 threshold = 0.5
 resultados = {}
-sel_video = "videos/a2.mp4"
+nombre_video = "a2.mp4"
+seleccionar_video = "videos/" + nombre_video
 
 # Cargar vídeo
-cap = cv2.VideoCapture(sel_video)
+cap = cv2.VideoCapture(seleccionar_video)
 
-# Primera Parte: Detección, seguimiento y generación de test.csv
+#Primera Parte: Detección, seguimiento y generación de .csv
 #Procesamiento de frames
 num_frame = -1
 ret = True
@@ -80,12 +81,14 @@ while ret:
                         }
                     }
 
-# Generar test.csv con los resultados
-write_csv(resultados, './test.csv')
+# Generar .csv con los resultados
+video_sin_extension = nombre_video.split('.')[0]
+csv_path = './data/{}.csv'.format(video_sin_extension)
+write_csv(resultados, csv_path)
 cap.release()
 
-# Segunda Parte: Procesamiento del vídeo de salida utilizando test.csv
-csv_path = './test.csv'
+# Segunda Parte: Procesamiento del vídeo de salida utilizando .csv
+csv_path = './data/{}.csv'.format(video_sin_extension)
 df = pd.read_csv(csv_path, usecols=['frame_nmr', 'car_id', 'car_bbox',
                                      'license_plate_bbox', 'license_plate_bbox_score',
                                      'license_number', 'license_number_score'])
@@ -95,9 +98,9 @@ patente_mas_comun_por_vehiculo = df.groupby('car_id')['license_number'].agg(lamb
 car_license_mapping = dict(zip(patente_mas_comun_por_vehiculo['car_id'], patente_mas_comun_por_vehiculo['license_number']))
 
 # VideoCapture y el VideoWriter
-video_path = sel_video
-video_path_out = video_path.replace('.mp4', '_out.mp4')
+video_path = seleccionar_video
 cap = cv2.VideoCapture(video_path)
+video_path_out = video_path.replace('.mp4', '_out.mp4')
 fps = int(cap.get(cv2.CAP_PROP_FPS))
 width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
 height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))

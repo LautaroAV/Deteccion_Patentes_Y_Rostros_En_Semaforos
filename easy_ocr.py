@@ -34,10 +34,12 @@ def obtener_auto(patentes, vehiculos_track_id):
     for i in range(len(vehiculos_track_id)):
         xauto1, yauto1, xauto2, yauto2, auto_id = vehiculos_track_id[i]
         
-        if x1 > xauto1 and y1 > yauto1 and x2 > xauto2 and y2 > yauto2:
+        if xauto1 <= x1 <= xauto2 and yauto1 <= y1 <= yauto2 and \
+           xauto1 <= x2 <= xauto2 and yauto1 <= y2 <= yauto2:
             auto_index = i
             auto_marcado = True
             break
+            
     if auto_marcado:
         return vehiculos_track_id[auto_index]
     return -1, -1, -1, -1, -1
