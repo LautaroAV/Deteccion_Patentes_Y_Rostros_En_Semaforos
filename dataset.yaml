@@ -1,5 +1,0 @@
-train: C:\Users\ixpan\OneDrive\Escritorio\ReconocimientoDePatentes\Data\train\
-val: C:\Users\ixpan\OneDrive\Escritorio\ReconocimientoDePatentes\Data\val\
-test:
-nc: 1
-names: ["patente"]

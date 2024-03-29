@@ -1,6 +1,6 @@
 from ultralytics import YOLO 
 import cv2
-from sort.sort import *
+from sort import *
 from utils import obtener_auto, leer_patente, write_csv
 
 
@@ -9,8 +9,8 @@ resultados = {}
 mot_tracker = Sort()
 
 #Cargar modelos
-coco_model = YOLO('yolov8n.pt') #Modelo pre-entrenado de yolo
-detector_patentes = YOLO("./runs/segment/train/weights/best.pt")
+coco_model = YOLO('./models/yolov8n.pt') #Modelo pre-entrenado de yolo
+detector_patentes = YOLO("./models/best.pt")
 
 #Cargar vídeo
 cap = cv2.VideoCapture("videos/test.mp4")
@@ -52,8 +52,12 @@ while ret:
 
                 #Aplicar filtros a la patente
                 patente_recortada_gris = cv2.cvtColor(patente_recortada, cv2.COLOR_BGR2GRAY)
-                _, patente_recortada_thresh = cv2.threshold(patente_recortada_gris, 64, 255, cv2.THRESH_BINARY_INV)
-
+                _, patente_recortada_thresh = cv2.threshold(patente_recortada_gris, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+                bordes_canny = cv2.Canny(patente_recortada_thresh, 100, 200)
+                _, patente_recortada_thresh2 = cv2.threshold(bordes_canny, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+                cv2.imshow('Bordes Canny', bordes_canny)
+                cv2.imshow('thresh', patente_recortada_thresh2)
+                cv2.waitKey(0)
                 #Leer número de la patente
                 patente_texto, patente_texto_score = leer_patente(patente_recortada_thresh)
                 print (patente_texto)
