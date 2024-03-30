@@ -15,7 +15,7 @@ detector_patentes = YOLO("./models/best.pt")
 vehiculos = [2, 3, 5, 7]
 threshold = 0.5
 resultados = {}
-nombre_video = "a2.mp4"
+nombre_video = "test.mp4"
 seleccionar_video = "videos/" + nombre_video
 
 # Cargar vídeo
@@ -115,16 +115,12 @@ df = pd.read_csv(csv_path, usecols=['frame_nmr', 'car_id', 'car_bbox',
 # Calcular los valores más comunes en 'license_number' y 'license_plate_tesseract' por 'car_id'
 license_number_counts = df.groupby(['car_id', 'license_number']).size().reset_index(name='license_number_count')
 tesseract_counts = df.groupby(['car_id', 'license_plate_tesseract']).size().reset_index(name='tesseract_count')
-
 # Combinar los valores más comunes de 'license_number' y 'license_plate_tesseract'
 merged_counts = pd.merge(license_number_counts, tesseract_counts, on='car_id', how='outer')
-
 # Elegir el valor más común entre 'license_number' y 'license_plate_tesseract' para cada 'car_id'
 merged_counts['common_license'] = merged_counts.apply(lambda row: row['license_number'] if row['license_number_count'] > row['tesseract_count'] else row['license_plate_tesseract'], axis=1)
-
 # Obtener la patente más común por vehículo
 patente_mas_comun_por_vehiculo = merged_counts.groupby('car_id')['common_license'].agg(lambda x: x.mode().iloc[0]).reset_index()
-
 # Combinar las patentes más comunes en un diccionario
 car_license_mapping = dict(zip(patente_mas_comun_por_vehiculo['car_id'], patente_mas_comun_por_vehiculo['common_license']))
 
@@ -137,39 +133,44 @@ width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
 height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 out = cv2.VideoWriter(video_path_out, cv2.VideoWriter_fourcc(*'MP4V'), fps, (width, height))
 
+# Continuación del código existente
 frame_count = 0
 while True:
     ret, frame = cap.read()
     if not ret:
         break
 
-    # Verificamos si hay información en el DataFrame para este frame
-    if frame_count in df['frame_nmr'].values:
-        # Obtenemos la información para este frame
-        frame_info = df[df['frame_nmr'] == frame_count]
+    results = detector_patentes(frame)[0]
+    for result in results.boxes.data.tolist():
+        x1, y1, x2, y2, score, class_id = result
+        license_plate_text = car_license_mapping[car_id]
+        if score > threshold:
+            # Dibujamos el rectángulo verde de la patente en el frame
+            cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 4)
+            cv2.putText(frame, results.names[int(class_id)].upper(), (int(x1), int(y1 - 10)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.3, (0, 255, 0), 3, cv2.LINE_AA)
 
-        # Iteramos sobre cada registro en este frame
-        for index, row in frame_info.iterrows():
-            car_id = row['car_id']
-            license_plate_text = car_license_mapping[car_id]
+        # Verificamos si hay información en el DataFrame para este frame
+        elif frame_count in df['frame_nmr'].values:
+            # Obtenemos la información para este frame
+            frame_info = df[df['frame_nmr'] == frame_count]
 
-            # Convertir las coordenadas de la cadena a una lista
-            car_bbox_str = row['car_bbox'].strip('[]').split()
-            car_bbox = [float(coord) for coord in car_bbox_str]
-            license_bbox_str = row['license_plate_bbox'].strip('[]').split()
-            license_bbox = [float(coord) for coord in license_bbox_str]
+            # Iteramos sobre cada registro en este frame
+            for index, row in frame_info.iterrows():
+                car_id = row['car_id']
+                license_plate_text = car_license_mapping[car_id]
 
-            # Dibujar rectángulos y texto en el frame
-            cv2.rectangle(frame, (int(car_bbox[0]), int(car_bbox[1])), (int(car_bbox[2]), int(car_bbox[3])), (255, 0, 0), 2)
-            cv2.rectangle(frame, (int(license_bbox[0]), int(license_bbox[1])), (int(license_bbox[2]), int(license_bbox[3])), (0, 255, 0), 4)
-            cv2.putText(frame, license_plate_text, (int(license_bbox[0]), int(license_bbox[1] - 10)), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+                # Convertir las coordenadas de la cadena a una lista
+                car_bbox_str = row['car_bbox'].strip('[]').split()
+                car_bbox = [float(coord) for coord in car_bbox_str]
+                license_bbox_str = row['license_plate_bbox'].strip('[]').split()
+                license_bbox = [float(coord) for coord in license_bbox_str]
 
-    else:
-        # Si no hay información en el DataFrame para este frame, dibujar rectángulos azules para todos los autos
-        for index, row in df[df['frame_nmr'] == frame_count].iterrows():
-            car_bbox_str = row['car_bbox'].strip('[]').split()
-            car_bbox = [int(float(coord)) for coord in car_bbox_str]
-            cv2.rectangle(frame, (car_bbox[0], car_bbox[1]), (car_bbox[2], car_bbox[3]), (255, 0, 0), 2)
+                # Dibujar rectángulos y texto en el frame
+                cv2.rectangle(frame, (int(car_bbox[0]), int(car_bbox[1])), (int(car_bbox[2]), int(car_bbox[3])), (255, 0, 0), 2)
+                cv2.rectangle(frame, (int(license_bbox[0]), int(license_bbox[1])), (int(license_bbox[2]), int(license_bbox[3])), (0, 255, 0), 4)
+                cv2.putText(frame, license_plate_text, (int(license_bbox[0]), int(license_bbox[1] - 10)), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+
 
     # Escribimos el frame en el video de salida
     out.write(frame)

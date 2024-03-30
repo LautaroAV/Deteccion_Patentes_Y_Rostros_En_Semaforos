@@ -6,6 +6,7 @@ import pytesseract
 reader = easyocr.Reader(['en'], gpu=True)
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
+
 def formato_patentes(text):
     text = text.replace(" ", "").upper()  # Removemos espacios y convertimos a mayúsculas
     if len(text) == 6:  #Patente vieja
@@ -31,9 +32,8 @@ def leer_patente_ocr(patente_recortada):
 
 def leer_patente_tesseract(patente_recortada):
     custom_config = r'--oem 3 --psm 7 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-    text = pytesseract.image_to_string(patente_recortada, config=custom_config).replace("\n", "").replace("\f", "").strip()
+    text = pytesseract.image_to_string(patente_recortada, config=custom_config).replace("\n", "").replace("\f", "").replace(" ", "").strip()
     #print(text)
-    # PyTesseract no devuelve directamente un puntaje de confianza, por lo que podrías omitir esa parte o usar image_to_data para obtener detalles
     if len(text) in [6, 7] and formato_patentes(text):
         return text, None  # PyTesseract no proporciona un score directamente
     return None, None
