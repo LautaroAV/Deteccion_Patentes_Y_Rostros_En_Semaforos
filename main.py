@@ -2,7 +2,7 @@ from ultralytics import YOLO
 import cv2
 import numpy as np
 from sort import Sort
-from easy_ocr import obtener_auto, leer_patente, write_csv
+from combinarOCR import obtener_auto, leer_patente_ocr, leer_patente_tesseract, write_csv
 import pandas as pd
 
 # Inicialización de rastreador y modelos
@@ -10,18 +10,18 @@ mot_tracker = Sort()
 coco_model = YOLO('./models/yolov8n.pt')
 detector_patentes = YOLO("./models/best.pt")
 
-#Definiciones y variables
+# Definiciones y variables
 vehiculos = [2, 3, 5, 7]
 threshold = 0.5
 resultados = {}
-nombre_video = "a2.mp4"
+nombre_video = "test.mp4"
 seleccionar_video = "videos/" + nombre_video
 
 # Cargar vídeo
 cap = cv2.VideoCapture(seleccionar_video)
 
-#Primera Parte: Detección, seguimiento y generación de .csv
-#Procesamiento de frames
+# Primera Parte: Detección, seguimiento y generación de .csv
+# Procesamiento de frames
 num_frame = -1
 ret = True
 while ret:
@@ -50,7 +50,7 @@ while ret:
                 nuevo_alto = 4 * patente_recortada.shape[0]
                 imagen_ampliada = cv2.resize(patente_recortada, (nuevo_ancho, nuevo_alto))
 
-                #Aplicar filtros a la patente
+                # Aplicar filtros a la patente
                 patente_recortada_gris = cv2.cvtColor(imagen_ampliada, cv2.COLOR_BGR2GRAY)
                 _, thresh = cv2.threshold(patente_recortada_gris, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
@@ -67,8 +67,10 @@ while ret:
                 # cv2.imshow('Bordes Canny', patente_final)
                 # cv2.waitKey(0)
 
-                patente_texto, patente_texto_score = leer_patente(patente_final)
-                print(patente_texto)
+                patente_texto, patente_texto_score = leer_patente_ocr(patente_final)
+                patente_texto_tesseract, patente_texto_score_tesseract = leer_patente_tesseract(patente_final)
+                print("Patente EasyOCR: " + str(patente_texto))
+                print("Patente Tesseract: " + str(patente_texto_tesseract))
 
                 if patente_texto is not None:
                     resultados[num_frame][auto_id] = {
@@ -78,6 +80,10 @@ while ret:
                             'text': patente_texto,
                             'bbox_score': puntuacion,
                             'text_score': patente_texto_score
+                        },
+                        'license_plate_tesseract': {
+                            'text': patente_texto_tesseract,
+                            'text_score': patente_texto_score_tesseract
                         }
                     }
 
@@ -91,11 +97,19 @@ cap.release()
 csv_path = './data/{}.csv'.format(video_sin_extension)
 df = pd.read_csv(csv_path, usecols=['frame_nmr', 'car_id', 'car_bbox',
                                      'license_plate_bbox', 'license_plate_bbox_score',
-                                     'license_number', 'license_number_score'])
+                                     'license_number', 'license_number_score', 'license_plate_tesseract'])
 
-
-patente_mas_comun_por_vehiculo = df.groupby('car_id')['license_number'].agg(lambda x: x.value_counts().idxmax()).reset_index()
-car_license_mapping = dict(zip(patente_mas_comun_por_vehiculo['car_id'], patente_mas_comun_por_vehiculo['license_number']))
+# Calcular los valores más comunes en 'license_number' y 'license_plate_tesseract' por 'car_id'
+license_number_counts = df.groupby(['car_id', 'license_number']).size().reset_index(name='license_number_count')
+tesseract_counts = df.groupby(['car_id', 'license_plate_tesseract']).size().reset_index(name='tesseract_count')
+# Combinar los valores más comunes de 'license_number' y 'license_plate_tesseract'
+merged_counts = pd.merge(license_number_counts, tesseract_counts, on='car_id', how='outer')
+# Elegir el valor más común entre 'license_number' y 'license_plate_tesseract' para cada 'car_id'
+merged_counts['common_license'] = merged_counts.apply(lambda row: row['license_number'] if row['license_number_count'] > row['tesseract_count'] else row['license_plate_tesseract'], axis=1)
+# Obtener la patente más común por vehículo
+patente_mas_comun_por_vehiculo = merged_counts.groupby('car_id')['common_license'].agg(lambda x: x.mode().iloc[0]).reset_index()
+# Combinar las patentes más comunes en un diccionario
+car_license_mapping = dict(zip(patente_mas_comun_por_vehiculo['car_id'], patente_mas_comun_por_vehiculo['common_license']))
 
 # VideoCapture y el VideoWriter
 video_path = seleccionar_video
