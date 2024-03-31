@@ -4,24 +4,25 @@ import numpy as np
 from sort import Sort
 from combinarOCR import obtener_auto, leer_patente_ocr, leer_patente_tesseract, write_csv
 import pandas as pd
+import imutils
 
 # Inicialización de rastreador y modelos
 mot_tracker = Sort()
 coco_model = YOLO('./models/yolov8n.pt')
 detector_patentes = YOLO("./models/best.pt")
 
-# Definiciones y variables
+#Definiciones y variables
 vehiculos = [2, 3, 5, 7]
 threshold = 0.5
 resultados = {}
-nombre_video = "a2.mp4"
+nombre_video = "a1.mp4"
 seleccionar_video = "videos/" + nombre_video
 
 # Cargar vídeo
 cap = cv2.VideoCapture(seleccionar_video)
 
-# Primera Parte: Detección, seguimiento y generación de .csv
-# Procesamiento de frames
+#Primera Parte: Detección, seguimiento y generación de .csv
+#Procesamiento de frames
 num_frame = -1
 ret = True
 while ret:
@@ -49,43 +50,55 @@ while ret:
                 nuevo_ancho = 4 * patente_recortada.shape[1]
                 nuevo_alto = 4 * patente_recortada.shape[0]
                 imagen_ampliada = cv2.resize(patente_recortada, (nuevo_ancho, nuevo_alto))
+                gray = cv2.cvtColor(imagen_ampliada, cv2.COLOR_BGR2GRAY)
+                _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-                # Aplicar filtros a la patente
-                patente_recortada_gris = cv2.cvtColor(imagen_ampliada, cv2.COLOR_BGR2GRAY)
-                _, thresh = cv2.threshold(patente_recortada_gris, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-                # Encontrar contornos en la imagen umbralizada
-                contornos, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                contorno_patente = max(contornos, key=cv2.contourArea)
+                kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+                opening = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
+                contours = cv2.findContours(opening.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                contours = imutils.grab_contours(contours)
 
-                # Crear una máscara para la patente
-                mascara = np.zeros_like(patente_recortada_gris)
-                cv2.drawContours(mascara, [contorno_patente], -1, (255), thickness=cv2.FILLED)
+                chars = []
+                for contour in contours:
+                    x, y, w, h = cv2.boundingRect(contour)
 
-                # Aplicar la máscara a la imagen umbralizada
-                patente_final = cv2.bitwise_and(thresh, thresh, mask=mascara)
-                # cv2.imshow('Bordes Canny', patente_final)
-                # cv2.waitKey(0)
+                    # Solo los contornos grandes perdurarán, ya que corresponden a los números que nos interesan.
+                    if w >= 25 and h >= 100:
+                        chars.append(contour)
+                if chars:
+                    chars = np.vstack([chars[i] for i in range(0, len(chars))])
+                    hull = cv2.convexHull(chars)
 
-                patente_texto, patente_texto_score = leer_patente_ocr(patente_final)
-                patente_texto_tesseract, patente_texto_score_tesseract = leer_patente_tesseract(patente_final)
-                print("Patente EasyOCR: " + str(patente_texto))
-                print("Patente Tesseract: " + str(patente_texto_tesseract))
+                    # Creamos una máscara y la alargamos.
+                    mask = np.zeros(imagen_ampliada.shape[:2], dtype='uint8')
+                    cv2.drawContours(mask, [hull], -1, 255, -1)
+                    mask = cv2.dilate(mask, None, iterations=2)
+                    final = cv2.bitwise_and(opening, opening, mask=mask)
 
-                if patente_texto is not None:
-                    resultados[num_frame][auto_id] = {
-                        'car': {'bbox': [xauto1, yauto1, xauto2, yauto2]},
-                        'license_plate': {
-                            'bbox': [x1, y1, x2, y2],
-                            'text': patente_texto,
-                            'bbox_score': puntuacion,
-                            'text_score': patente_texto_score
-                        },
-                        'license_plate_tesseract': {
-                            'text': patente_texto_tesseract,
-                            'text_score': patente_texto_score_tesseract
-                        }
-                    }
+                    # cv2.imshow('MASCARA', final)
+                    # cv2.imshow('Bordes Canny', patente_final)
+                    # cv2.waitKey(0)
+
+                    patente_texto, patente_texto_score = leer_patente_ocr(final)
+                    patente_texto_tesseract, patente_texto_score_tesseract = leer_patente_tesseract(final)
+                    print("Patente EasyOCR: " + str(patente_texto))
+                    print("Patente Tesseract: " + str(patente_texto_tesseract))
+
+                    if patente_texto is not None:
+                        resultados[num_frame][auto_id] = {
+                                    'car': {'bbox': [xauto1, yauto1, xauto2, yauto2]},
+                                    'license_plate': {
+                                        'bbox': [x1, y1, x2, y2],
+                                        'text': patente_texto,
+                                        'bbox_score': puntuacion,
+                                        'text_score': patente_texto_score
+                                    },
+                                    'license_plate_tesseract': {
+                                        'text': patente_texto_tesseract,
+                                        'text_score': patente_texto_score_tesseract
+                                    }
+                                }
 
 # Generar .csv con los resultados
 video_sin_extension = nombre_video.split('.')[0]
@@ -102,14 +115,23 @@ df = pd.read_csv(csv_path, usecols=['frame_nmr', 'car_id', 'car_bbox',
 # Calcular los valores más comunes en 'license_number' y 'license_plate_tesseract' por 'car_id'
 license_number_counts = df.groupby(['car_id', 'license_number']).size().reset_index(name='license_number_count')
 tesseract_counts = df.groupby(['car_id', 'license_plate_tesseract']).size().reset_index(name='tesseract_count')
-# Combinar los valores más comunes de 'license_number' y 'license_plate_tesseract'
-merged_counts = pd.merge(license_number_counts, tesseract_counts, on='car_id', how='outer')
-# Elegir el valor más común entre 'license_number' y 'license_plate_tesseract' para cada 'car_id'
-merged_counts['common_license'] = merged_counts.apply(lambda row: row['license_number'] if row['license_number_count'] > row['tesseract_count'] else row['license_plate_tesseract'], axis=1)
-# Obtener la patente más común por vehículo
-patente_mas_comun_por_vehiculo = merged_counts.groupby('car_id')['common_license'].agg(lambda x: x.mode().iloc[0]).reset_index()
-# Combinar las patentes más comunes en un diccionario
-car_license_mapping = dict(zip(patente_mas_comun_por_vehiculo['car_id'], patente_mas_comun_por_vehiculo['common_license']))
+
+# Fusionar los recuentos de las placas
+merged_df = pd.concat([license_number_counts[['car_id', 'license_number', 'license_number_count']], 
+                       tesseract_counts[['car_id', 'license_plate_tesseract', 'tesseract_count']]
+                            .rename(columns={'license_plate_tesseract': 'license_number', 'tesseract_count': 'license_number_count'})])
+
+# Agrupar y sumar los recuentos de las placas
+merged_df = merged_df.groupby(['car_id', 'license_number'], as_index=False)['license_number_count'].sum()
+
+# Ordenar el DataFrame resultante por 'car_id'
+merged_df = merged_df.sort_values(by='car_id')
+
+# Encontrar la patente más común por vehículo
+most_common_plate = merged_df.loc[merged_df.groupby('car_id')['license_number_count'].idxmax()]
+
+# Crear el diccionario car_license_mapping
+car_license_mapping = dict(zip(most_common_plate['car_id'], most_common_plate['license_number']))
 
 # VideoCapture y el VideoWriter
 video_path = seleccionar_video
