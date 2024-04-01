@@ -14,7 +14,7 @@ detector_patentes = YOLO("./models/best.pt")
 vehiculos = [2, 3, 5, 7]
 threshold = 0.5
 resultados = {}
-nombre_video = "a2.mp4"
+nombre_video = "a1.mp4"
 seleccionar_video = "videos/" + nombre_video
 
 # Cargar vídeo
@@ -102,14 +102,23 @@ df = pd.read_csv(csv_path, usecols=['frame_nmr', 'car_id', 'car_bbox',
 # Calcular los valores más comunes en 'license_number' y 'license_plate_tesseract' por 'car_id'
 license_number_counts = df.groupby(['car_id', 'license_number']).size().reset_index(name='license_number_count')
 tesseract_counts = df.groupby(['car_id', 'license_plate_tesseract']).size().reset_index(name='tesseract_count')
-# Combinar los valores más comunes de 'license_number' y 'license_plate_tesseract'
-merged_counts = pd.merge(license_number_counts, tesseract_counts, on='car_id', how='outer')
-# Elegir el valor más común entre 'license_number' y 'license_plate_tesseract' para cada 'car_id'
-merged_counts['common_license'] = merged_counts.apply(lambda row: row['license_number'] if row['license_number_count'] > row['tesseract_count'] else row['license_plate_tesseract'], axis=1)
-# Obtener la patente más común por vehículo
-patente_mas_comun_por_vehiculo = merged_counts.groupby('car_id')['common_license'].agg(lambda x: x.mode().iloc[0]).reset_index()
-# Combinar las patentes más comunes en un diccionario
-car_license_mapping = dict(zip(patente_mas_comun_por_vehiculo['car_id'], patente_mas_comun_por_vehiculo['common_license']))
+
+# Fusionar los recuentos de las placas
+merged_df = pd.concat([license_number_counts[['car_id', 'license_number', 'license_number_count']], 
+                       tesseract_counts[['car_id', 'license_plate_tesseract', 'tesseract_count']]
+                            .rename(columns={'license_plate_tesseract': 'license_number', 'tesseract_count': 'license_number_count'})])
+
+# Agrupar y sumar los recuentos de las placas
+merged_df = merged_df.groupby(['car_id', 'license_number'], as_index=False)['license_number_count'].sum()
+
+# Ordenar el DataFrame resultante por 'car_id'
+merged_df = merged_df.sort_values(by='car_id')
+
+# Encontrar la patente más común por vehículo
+most_common_plate = merged_df.loc[merged_df.groupby('car_id')['license_number_count'].idxmax()]
+print(merged_df)
+# Crear el diccionario car_license_mapping
+car_license_mapping = dict(zip(most_common_plate['car_id'], most_common_plate['license_number']))
 
 # VideoCapture y el VideoWriter
 video_path = seleccionar_video

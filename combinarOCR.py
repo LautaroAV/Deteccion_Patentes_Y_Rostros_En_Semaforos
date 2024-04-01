@@ -1,6 +1,10 @@
 import easyocr
 import string
 import pytesseract
+from google.cloud import vision
+import io
+import os
+from PIL import Image
 
 #Iniciador de OCR
 reader = easyocr.Reader(['en'], gpu=True)
@@ -38,6 +42,43 @@ def leer_patente_tesseract(patente_recortada):
         return text, None  # PyTesseract no proporciona un score directamente
     return None, None
 
+def leer_patente_google(patente_recortada):
+    os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = r'D:\Lautii\API\master-reactor-419010-a70901d2dc50.json'
+    
+    client = vision.ImageAnnotatorClient()
+    
+    image_pillow = Image.fromarray(patente_recortada)
+
+    # Guardar la imagen en el disco
+    image_pillow.save('./images/patente_temporal.jpg')
+
+    # Luego puedes abrir la imagen guardada
+    with io.open('./images/patente_temporal.jpg', 'rb') as image_file:
+        content = image_file.read()
+
+    image = vision.Image(content=content)
+    response = client.text_detection(image=image)
+    texts = response.text_annotations
+
+    new_text = ''  # Inicializar con un valor predeterminado
+    
+    if texts:
+        new_text = ''.join(texts[0].description.split())
+
+    if response.error.message:
+        raise Exception(
+            '{}\nFor more info on error messages, check: '
+            'https://cloud.google.com/apis/design/errors'.format(
+                response.error.message))
+    
+    # Verificar longitud y formato de la patente
+    if len(new_text) in [6, 7] and formato_patentes(new_text):
+        # Si cumple con los criterios, retornar el texto y otros datos relevantes (en este caso, ninguno)
+        return new_text, None
+    else:
+        # Si no cumple con los criterios, retornar None para el texto y otros datos relevantes
+        return None, None
+
 def obtener_auto(patentes, vehiculos_track_id):
     x1, y1, x2, y2, puntuacion, class_id = patentes
     auto_marcado = False
@@ -57,10 +98,11 @@ def obtener_auto(patentes, vehiculos_track_id):
 
 def write_csv(results, output_path):
     with open(output_path, 'w') as f:
-        f.write('{},{},{},{},{},{},{},{}\n'.format('frame_nmr', 'car_id', 'car_bbox',
+        f.write('{},{},{},{},{},{},{},{},{},{}\n'.format('frame_nmr', 'car_id', 'car_bbox',
                                                     'license_plate_bbox', 'license_plate_bbox_score', 
                                                     'license_number', 'license_number_score',
-                                                    'license_plate_tesseract', 'license_plate_tesseract_score'))
+                                                    'license_plate_tesseract', 'license_plate_tesseract_score',
+                                                    'license_plate_google', 'license_plate_google_score'))
 
         for frame_nmr in results.keys():
             for car_id in results[frame_nmr].keys():
@@ -82,13 +124,23 @@ def write_csv(results, output_path):
                     license_plate_tesseract = results[frame_nmr][car_id]['license_plate_tesseract']['text']
                     license_plate_tesseract_score = results[frame_nmr][car_id]['license_plate_tesseract']['text_score']
 
-                    f.write('{},{},{},{},{},{},{},{}\n'.format(frame_nmr,
-                                                                car_id,
-                                                                car_bbox,
-                                                                license_plate_bbox,
-                                                                results[frame_nmr][car_id]['license_plate']['bbox_score'],
-                                                                license_plate_text,
-                                                                license_plate_text_score,
-                                                                license_plate_tesseract,
-                                                                license_plate_tesseract_score))
+                    # Add license_plate_google information if exists
+                    if 'license_plate_google' in results[frame_nmr][car_id].keys():
+                        license_plate_google = results[frame_nmr][car_id]['license_plate_google']['text']
+                        license_plate_google_score = results[frame_nmr][car_id]['license_plate_google']['text_score']
+                    else:
+                        license_plate_google = ''
+                        license_plate_google_score = ''
+
+                    f.write('{},{},{},{},{},{},{},{},{},{}\n'.format(frame_nmr,
+                                                                    car_id,
+                                                                    car_bbox,
+                                                                    license_plate_bbox,
+                                                                    results[frame_nmr][car_id]['license_plate']['bbox_score'],
+                                                                    license_plate_text,
+                                                                    license_plate_text_score,
+                                                                    license_plate_tesseract,
+                                                                    license_plate_tesseract_score,
+                                                                    license_plate_google,
+                                                                    license_plate_google_score))
         f.close()

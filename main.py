@@ -2,7 +2,7 @@ from ultralytics import YOLO
 import cv2
 import numpy as np
 from sort import Sort
-from combinarOCR import obtener_auto, leer_patente_ocr, leer_patente_tesseract, write_csv
+from combinarOCR import obtener_auto, leer_patente_ocr, leer_patente_tesseract, leer_patente_google, write_csv
 import pandas as pd
 import imutils
 
@@ -15,7 +15,7 @@ detector_patentes = YOLO("./models/best.pt")
 vehiculos = [2, 3, 5, 7]
 threshold = 0.5
 resultados = {}
-nombre_video = "a1.mp4"
+nombre_video = "test.mp4"
 seleccionar_video = "videos/" + nombre_video
 
 # Cargar vídeo
@@ -53,7 +53,6 @@ while ret:
                 gray = cv2.cvtColor(imagen_ampliada, cv2.COLOR_BGR2GRAY)
                 _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-
                 kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
                 opening = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
                 contours = cv2.findContours(opening.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -75,16 +74,20 @@ while ret:
                     cv2.drawContours(mask, [hull], -1, 255, -1)
                     mask = cv2.dilate(mask, None, iterations=2)
                     final = cv2.bitwise_and(opening, opening, mask=mask)
-
+                    # invert = cv2.bitwise_not(final)
+                    # borderless = skimage.segmentation.clear_border(invert)
+                    # invert2 = cv2.bitwise_not(borderless)
+                    #cany = cv2.dilate(invert2, None, iterations=1)
                     # cv2.imshow('MASCARA', final)
-                    # cv2.imshow('Bordes Canny', patente_final)
                     # cv2.waitKey(0)
 
                     patente_texto, patente_texto_score = leer_patente_ocr(final)
                     patente_texto_tesseract, patente_texto_score_tesseract = leer_patente_tesseract(final)
+                    patente_texto_google, patente_texto_score_google = leer_patente_google(final)
                     print("Patente EasyOCR: " + str(patente_texto))
                     print("Patente Tesseract: " + str(patente_texto_tesseract))
-
+                    print("Patente Google: " + str(patente_texto_google))
+                    
                     if patente_texto is not None:
                         resultados[num_frame][auto_id] = {
                                     'car': {'bbox': [xauto1, yauto1, xauto2, yauto2]},
@@ -97,6 +100,10 @@ while ret:
                                     'license_plate_tesseract': {
                                         'text': patente_texto_tesseract,
                                         'text_score': patente_texto_score_tesseract
+                                    },
+                                    'license_plate_google': {
+                                        'text': patente_texto_google,
+                                        'text_score': patente_texto_score_google
                                     }
                                 }
 
@@ -110,16 +117,19 @@ cap.release()
 csv_path = './data/{}.csv'.format(video_sin_extension)
 df = pd.read_csv(csv_path, usecols=['frame_nmr', 'car_id', 'car_bbox',
                                      'license_plate_bbox', 'license_plate_bbox_score',
-                                     'license_number', 'license_number_score', 'license_plate_tesseract'])
+                                     'license_number', 'license_number_score', 'license_plate_tesseract', 'license_plate_google'])
 
-# Calcular los valores más comunes en 'license_number' y 'license_plate_tesseract' por 'car_id'
+# Calcular los valores más comunes en 'license_number', 'license_plate_tesseract', y 'license_plate_google' por 'car_id'
 license_number_counts = df.groupby(['car_id', 'license_number']).size().reset_index(name='license_number_count')
 tesseract_counts = df.groupby(['car_id', 'license_plate_tesseract']).size().reset_index(name='tesseract_count')
+google_counts = df.groupby(['car_id', 'license_plate_google']).size().reset_index(name='google_count')
 
 # Fusionar los recuentos de las placas
 merged_df = pd.concat([license_number_counts[['car_id', 'license_number', 'license_number_count']], 
                        tesseract_counts[['car_id', 'license_plate_tesseract', 'tesseract_count']]
-                            .rename(columns={'license_plate_tesseract': 'license_number', 'tesseract_count': 'license_number_count'})])
+                            .rename(columns={'license_plate_tesseract': 'license_number', 'tesseract_count': 'license_number_count'}),
+                       google_counts[['car_id', 'license_plate_google', 'google_count']]
+                            .rename(columns={'license_plate_google': 'license_number', 'google_count': 'license_number_count'})])
 
 # Agrupar y sumar los recuentos de las placas
 merged_df = merged_df.groupby(['car_id', 'license_number'], as_index=False)['license_number_count'].sum()
@@ -129,6 +139,7 @@ merged_df = merged_df.sort_values(by='car_id')
 
 # Encontrar la patente más común por vehículo
 most_common_plate = merged_df.loc[merged_df.groupby('car_id')['license_number_count'].idxmax()]
+print(merged_df)
 
 # Crear el diccionario car_license_mapping
 car_license_mapping = dict(zip(most_common_plate['car_id'], most_common_plate['license_number']))
