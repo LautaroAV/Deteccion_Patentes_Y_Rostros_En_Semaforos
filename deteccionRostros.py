@@ -13,7 +13,7 @@ faceClassif = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontal
 count = 0
 
 # Inicia la captura de video desde la cámara
-cap = cv2.VideoCapture(0)  # 0 representa la cámara predeterminada
+cap = cv2.VideoCapture(1)  # 0 representa la cámara predeterminada
 
 while True:
     ret, frame = cap.read()  # Captura un frame de la cámara
