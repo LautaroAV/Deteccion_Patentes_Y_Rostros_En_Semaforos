@@ -49,11 +49,15 @@ def leer_patente_google(patente_recortada):
     
     image_pillow = Image.fromarray(patente_recortada)
 
-    # Guardar la imagen en el disco
-    image_pillow.save('./images/patente_temporal.jpg')
+    # Crear la carpeta "patentes" dentro de la carpeta "images" si no existe
+    if not os.path.exists('./images/patentes'):
+        os.makedirs('./images/patentes')
 
-    # Luego puedes abrir la imagen guardada
-    with io.open('./images/patente_temporal.jpg', 'rb') as image_file:
+    # Guardar la imagen en el disco en la nueva ruta
+    image_pillow.save('./images/patentes/patente_temporal.jpg')
+
+    # Luego puedes abrir la imagen guardada desde la nueva ruta
+    with io.open('./images/patentes/patente_temporal.jpg', 'rb') as image_file:
         content = image_file.read()
 
     image = vision.Image(content=content)

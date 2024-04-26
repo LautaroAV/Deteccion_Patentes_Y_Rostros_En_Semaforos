@@ -1,3 +1,4 @@
-__pycache__/
-env/
-videos/
+__pycache__
+env
+videos
+images/rostros
