@@ -15,7 +15,7 @@ detector_patentes = YOLO("./models/best.pt")
 vehiculos = [2, 3, 5, 7]
 threshold = 0.5
 resultados = {}
-nombre_video = "test.mp4"
+nombre_video = "a2.mp4"
 seleccionar_video = "videos/" + nombre_video
 
 # Cargar vídeo

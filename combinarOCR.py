@@ -43,7 +43,7 @@ def leer_patente_tesseract(patente_recortada):
     return None, None
 
 def leer_patente_google(patente_recortada):
-    os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = r'D:\Lautii\API\master-reactor-419010-a70901d2dc50.json'
+    os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = r'F:\Lautii\API\master-reactor-419010-a70901d2dc50.json'
     
     client = vision.ImageAnnotatorClient()
     
