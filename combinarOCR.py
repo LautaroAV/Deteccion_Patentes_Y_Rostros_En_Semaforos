@@ -102,11 +102,11 @@ def obtener_auto(patentes, vehiculos_track_id):
 
 def write_csv(results, output_path):
     with open(output_path, 'w') as f:
-        f.write('{},{},{},{},{},{},{},{},{},{}\n'.format('frame_nmr', 'car_id', 'car_bbox',
+        f.write('{},{},{},{},{},{},{},{},{},{},{},{}\n'.format('frame_nmr', 'car_id', 'car_bbox',
                                                     'license_plate_bbox', 'license_plate_bbox_score', 
                                                     'license_number', 'license_number_score',
                                                     'license_plate_tesseract', 'license_plate_tesseract_score',
-                                                    'license_plate_google', 'license_plate_google_score'))
+                                                    'license_plate_google', 'license_plate_google_score', 'faces'))
 
         for frame_nmr in results.keys():
             for car_id in results[frame_nmr].keys():
@@ -136,15 +136,22 @@ def write_csv(results, output_path):
                         license_plate_google = ''
                         license_plate_google_score = ''
 
-                    f.write('{},{},{},{},{},{},{},{},{},{}\n'.format(frame_nmr,
-                                                                    car_id,
-                                                                    car_bbox,
-                                                                    license_plate_bbox,
-                                                                    results[frame_nmr][car_id]['license_plate']['bbox_score'],
-                                                                    license_plate_text,
-                                                                    license_plate_text_score,
-                                                                    license_plate_tesseract,
-                                                                    license_plate_tesseract_score,
-                                                                    license_plate_google,
-                                                                    license_plate_google_score))
+                    # Add faces information if exists
+                    if 'faces' in results[frame_nmr][car_id].keys():
+                        faces = ','.join(results[frame_nmr][car_id]['faces'])
+                    else:
+                        faces = ''
+
+                    f.write('{},{},{},{},{},{},{},{},{},{},{},{}\n'.format(frame_nmr,
+                                                                            car_id,
+                                                                            car_bbox,
+                                                                            license_plate_bbox,
+                                                                            results[frame_nmr][car_id]['license_plate']['bbox_score'],
+                                                                            license_plate_text,
+                                                                            license_plate_text_score,
+                                                                            license_plate_tesseract,
+                                                                            license_plate_tesseract_score,
+                                                                            license_plate_google,
+                                                                            license_plate_google_score,
+                                                                            faces))
         f.close()
