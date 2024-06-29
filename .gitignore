@@ -1,4 +1,5 @@
 __pycache__
 env
 videos
-images/rostros
+images
+main/__pycache__

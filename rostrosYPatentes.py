@@ -10,7 +10,7 @@ from mtcnn.mtcnn import MTCNN
 
 # Inicialización de rastreador y modelos
 mot_tracker = Sort()
-coco_model = YOLO('./models/yolov8n.pt')
+coco_model = YOLO('./models/yolov8m.pt')
 detector_patentes = YOLO("./models/best.pt")
 
 # Definiciones y variables
@@ -42,22 +42,10 @@ while ret:
     if ret:
         resultados[num_frame] = {}
 
-        # Preprocesamiento de la imagen
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        enhanced_frame = cv2.equalizeHist(gray)
-        
-        # Aplicar desenfoque gaussiano para reducir el ruido
-        blurred_frame = cv2.GaussianBlur(enhanced_frame, (5, 5), 0)
-
-        # Aplicar ajuste de contraste y brillo
-        alpha = 1.5  # Contraste
-        beta = 50    # Brillo
-        adjusted_frame = cv2.convertScaleAbs(blurred_frame, alpha=alpha, beta=beta)
-
         # Detección de vehículos y seguimiento
         detecciones = coco_model(frame)[0]
         detecciones_autos = [deteccion[:5] for deteccion in detecciones.boxes.data.tolist() if int(deteccion[5]) in vehiculos]
-        
+
         # Verificar el formato de detecciones_autos
         print(f"Frame {num_frame} - Detecciones de autos: {detecciones_autos}")
 
@@ -66,7 +54,7 @@ while ret:
             continue
         
         tracks_id = mot_tracker.update(np.asarray(detecciones_autos))
-        
+
         # Detección de patentes
         patentes = detector_patentes(frame)[0]
         for patente in patentes.boxes.data.tolist():
@@ -133,6 +121,19 @@ while ret:
                                 }
 
         # Detección de rostros utilizando MTCNN en la imagen preprocesada
+        # Preprocesamiento de la imagen
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        enhanced_frame = cv2.equalizeHist(gray)
+        
+        # Aplicar desenfoque gaussiano para reducir el ruido
+        blurred_frame = cv2.GaussianBlur(enhanced_frame, (5, 5), 0)
+
+        # Aplicar ajuste de contraste y brillo
+        alpha = 1.5  # Contraste
+        beta = 50    # Brillo
+        
+        adjusted_frame = cv2.convertScaleAbs(blurred_frame, alpha=alpha, beta=beta)
+        
         rgb_frame = cv2.cvtColor(adjusted_frame, cv2.COLOR_GRAY2RGB)
         faces = detector.detect_faces(rgb_frame)
         
@@ -142,7 +143,7 @@ while ret:
         for face in high_conf_faces:
             (x, y, w, h) = face['box']
             
-            # Asociar rostro al auto más cercano
+            # Verificar si el rostro está dentro de un auto
             face_assigned = False
             for auto_id, data in resultados[num_frame].items():
                 car_bbox = data['car']['bbox']
@@ -158,6 +159,9 @@ while ret:
                     
                     resultados[num_frame][auto_id]['faces'].append(rostro_path)
                     face_assigned = True
+
+                    # Dibujar el recuadro rojo alrededor del rostro
+                    cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 0, 255), 2)
                     break
             
             # Si el rostro no se asigna a ningún auto, no se guarda
@@ -252,6 +256,8 @@ while True:
                     face = cv2.imread(face_path)
                     h, w, _ = face.shape
                     frame[0:h, 0:w] = face
+                    # Dibujar el recuadro rojo alrededor del rostro
+                    cv2.rectangle(frame, (0, 0), (w, h), (0, 0, 255), 2)
 
     else:
         # Si no hay información en el DataFrame para este frame, dibujar rectángulos azules para todos los autos

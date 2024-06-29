@@ -73,7 +73,7 @@ while ret:
                     mask = np.zeros(imagen_ampliada.shape[:2], dtype='uint8')
                     cv2.drawContours(mask, [hull], -1, 255, -1)
                     mask = cv2.dilate(mask, None, iterations=2)
-                    final = cv2.bitwise_and(opening, opening, mask=mask)
+                    final = cv2.bitwise_and(opening, opening, mask=mask)  
                     # invert = cv2.bitwise_not(final)
                     # borderless = skimage.segmentation.clear_border(invert)
                     # invert2 = cv2.bitwise_not(borderless)

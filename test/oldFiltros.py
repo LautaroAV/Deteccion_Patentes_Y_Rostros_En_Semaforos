@@ -1,7 +1,7 @@
 from ultralytics import YOLO 
 import cv2
 import numpy as np
-from sort import Sort
+from tracker import Sort
 from combinarOCR import obtener_auto, leer_patente_ocr, leer_patente_tesseract, write_csv
 import pandas as pd
 
