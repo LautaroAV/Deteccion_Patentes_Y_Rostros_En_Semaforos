@@ -1,5 +1,6 @@
 __pycache__
-env
-videos
+env/
+videos/
 images/
 test/
+data/
