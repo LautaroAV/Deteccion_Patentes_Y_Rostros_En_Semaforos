@@ -8,7 +8,49 @@ from utils import write_csv
 VEHICULOS = [2, 3, 5, 7]
 THRESHOLD = 0.5
 
-def process_video_frames(video_path, mot_tracker, coco_model, detector_patentes, face_detector, rostros_path):
+def detectar_vehiculos_y_patentes(frame, coco_model, detector_patentes, mot_tracker):
+    resultados = {}
+    detecciones = coco_model(frame)[0]
+    detecciones_autos = [
+        deteccion[:5] for deteccion in detecciones.boxes.data.tolist()
+        if int(deteccion[5]) in VEHICULOS
+    ]
+
+    if not detecciones_autos:
+        return resultados
+
+    tracks_id = mot_tracker.update(np.asarray(detecciones_autos))
+
+    patentes = detector_patentes(frame)[0]
+    for patente in patentes.boxes.data.tolist():
+        x1, y1, x2, y2, puntuacion, _ = patente
+        if puntuacion > THRESHOLD:
+            xauto1, yauto1, xauto2, yauto2, auto_id = obtener_auto(patente, tracks_id)
+            if auto_id == -1:
+                continue
+
+            resultado_patente = detect_license_plate(frame, patente)
+            if resultado_patente:
+                resultados[auto_id] = {
+                    'car': {'bbox': [xauto1, yauto1, xauto2, yauto2]},
+                    'license_plate': {
+                        'bbox': [x1, y1, x2, y2],
+                        'text': resultado_patente['text'],
+                        'bbox_score': puntuacion,
+                        'text_score': resultado_patente['text_score']
+                    },
+                    'tesseract': {
+                        'text': resultado_patente['tesseract']['text'],
+                        'text_score': resultado_patente['tesseract']['text_score']
+                    },
+                    'google': {
+                        'text': resultado_patente['google']['text'],
+                        'text_score': resultado_patente['google']['text_score']
+                    }
+                }
+    return resultados
+
+def procesar_frames_video(video_path, mot_tracker, coco_model, detector_patentes, face_detector, rostros_path):
     cap = cv2.VideoCapture(video_path)
     frame_count = -1
     resultados = {}
@@ -19,56 +61,46 @@ def process_video_frames(video_path, mot_tracker, coco_model, detector_patentes,
         if not ret:
             break
 
-        resultados[frame_count] = {}
-
-        # Detección de vehículos y seguimiento
-        detecciones = coco_model(frame)[0]
-        detecciones_autos = [
-            deteccion[:5] for deteccion in detecciones.boxes.data.tolist()
-            if int(deteccion[5]) in VEHICULOS
-        ]
-
-        if not detecciones_autos:
-            continue
-
-        tracks_id = mot_tracker.update(np.asarray(detecciones_autos))
-
-        # Detección de patentes
-        patentes = detector_patentes(frame)[0]
-        for patente in patentes.boxes.data.tolist():
-            x1, y1, x2, y2, puntuacion, _ = patente
-            if puntuacion > THRESHOLD:
-                xauto1, yauto1, xauto2, yauto2, auto_id = obtener_auto(patente, tracks_id)
-                if auto_id == -1:
-                    continue
-
-                resultado_patente = detect_license_plate(frame, patente)
-                if resultado_patente:
-                    resultados[frame_count][auto_id] = {
-                        'car': {'bbox': [xauto1, yauto1, xauto2, yauto2]},
-                        'license_plate': {
-                            'bbox': [x1, y1, x2, y2],
-                            'text': resultado_patente['text'],
-                            'bbox_score': puntuacion,
-                            'text_score': resultado_patente['text_score']
-                        },
-                        'tesseract': {
-                            'text': resultado_patente['tesseract']['text'],
-                            'text_score': resultado_patente['tesseract']['text_score']
-                        },
-                        'google': {
-                            'text': resultado_patente['google']['text'],
-                            'text_score': resultado_patente['google']['text_score']
-                        }
-                    }
-
-        # Detección de rostros
+        resultados[frame_count] = detectar_vehiculos_y_patentes(frame, coco_model, detector_patentes, mot_tracker)
         detect_faces_in_frame(frame, frame_count, resultados, face_detector, rostros_path)
 
     cap.release()
     return resultados
 
-def generate_output_video(video_path, csv_path, resultados):
+def procesar_frames_camara(mot_tracker, coco_model, detector_patentes, face_detector, rostros_path):
+    cap = cv2.VideoCapture(2)
+    width = int(1366)
+    ASPECT_RATIO = 16 / 9
+    height = int(width / ASPECT_RATIO)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+
+    resultados = {}
+    frame_count = 0
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            print("Error al capturar el fotograma")
+            break
+
+        resultados[frame_count] = detectar_vehiculos_y_patentes(frame, coco_model, detector_patentes, mot_tracker)
+        detect_faces_in_frame(frame, frame_count, resultados, face_detector, rostros_path)
+
+        csv_path = './data/resultados_camera_en_tiempo_real.csv'
+        write_csv(resultados, csv_path)
+
+        cv2.imshow('Frame', frame)
+
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+        frame_count += 1
+
+    cap.release()
+    cv2.destroyAllWindows()
+
+def generar_video_salida(video_path, csv_path, resultados):
     df = pd.read_csv(csv_path, usecols=lambda col: 'faces' in col or col in [
         'frame_nmr', 'car_id', 'car_bbox', 'license_plate_bbox', 'license_plate_bbox_score',
         'license_number', 'license_number_score', 'license_plate_tesseract', 'license_plate_google'
@@ -125,79 +157,4 @@ def generate_output_video(video_path, csv_path, resultados):
 
     cap.release()
     out.release()
-    cv2.destroyAllWindows()
-
-def process_camera_frames(mot_tracker, coco_model, detector_patentes, face_detector, rostros_path):
-    cap = cv2.VideoCapture(2)
-    width = int(1920)
-    ASPECT_RATIO = 16 / 9
-    height = int(width / ASPECT_RATIO)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-
-    resultados = {}
-    frame_count = 0
-
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            print("Error al capturar el fotograma")
-            break
-
-        resultados[frame_count] = {}
-
-        # Detección de vehículos y seguimiento
-        detecciones = coco_model(frame)[0]
-        detecciones_autos = [
-            deteccion[:5] for deteccion in detecciones.boxes.data.tolist()
-            if int(deteccion[5]) in VEHICULOS
-        ]
-
-        if not detecciones_autos:
-            continue
-
-        tracks_id = mot_tracker.update(np.asarray(detecciones_autos))
-
-        # Detección de patentes
-        patentes = detector_patentes(frame)[0]
-        for patente in patentes.boxes.data.tolist():
-            x1, y1, x2, y2, puntuacion, _ = patente
-            if puntuacion > THRESHOLD:
-                xauto1, yauto1, xauto2, yauto2, auto_id = obtener_auto(patente, tracks_id)
-                if auto_id == -1:
-                    continue
-
-                resultado_patente = detect_license_plate(frame, patente)
-                if resultado_patente:
-                    resultados[frame_count][auto_id] = {
-                        'car': {'bbox': [xauto1, yauto1, xauto2, yauto2]},
-                        'license_plate': {
-                            'bbox': [x1, y1, x2, y2],
-                            'text': resultado_patente['text'],
-                            'bbox_score': puntuacion,
-                            'text_score': resultado_patente['text_score']
-                        },
-                        'tesseract': {
-                            'text': resultado_patente['tesseract']['text'],
-                            'text_score': resultado_patente['tesseract']['text_score']
-                        },
-                        'google': {
-                            'text': resultado_patente['google']['text'],
-                            'text_score': resultado_patente['google']['text_score']
-                        }
-                    }
-
-        detect_faces_in_frame(frame, frame_count, resultados, face_detector, rostros_path)
-
-        csv_path = './data/resultados_camera_en_tiempo_real.csv'
-        write_csv(resultados, csv_path)
-
-        cv2.imshow('Frame', frame)
-
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
-
-        frame_count += 1
-
-    cap.release()
     cv2.destroyAllWindows()

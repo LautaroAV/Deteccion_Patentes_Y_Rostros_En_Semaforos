@@ -3,14 +3,22 @@ import numpy as np
 from ultralytics import YOLO
 from google.cloud import vision
 from PIL import Image
+from dotenv import load_dotenv 
+
+# Cargar las variables de entorno desde el archivo .env
+load_dotenv()
 
 # Inicialización de OCR
 reader = easyocr.Reader(['en'], gpu=True)
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+tesseract_cmd_path = os.getenv('TESSERACT_CMD')
+if not tesseract_cmd_path:
+    raise Exception("Error: la variable de entorno TESSERACT_CMD no está definida o no se ha cargado correctamente.")
+
+pytesseract.pytesseract.tesseract_cmd = tesseract_cmd_path
 
 def initialize_ocr_models():
     coco_model = YOLO('./models/vehiculos.pt')
-    detector_patentes = YOLO('./models/patentes.pt')
+    detector_patentes = YOLO('./models/best.pt')
     return coco_model, detector_patentes
 
 def formato_patentes(text):
@@ -43,7 +51,11 @@ def leer_patente_tesseract(patente_recortada):
     return None, None
 
 def leer_patente_google(patente_recortada):
-    os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = r'F:\Lautii\API\master-reactor-419010-a70901d2dc50.json'
+    google_credentials_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+    if not google_credentials_path:
+        raise Exception("Error: la variable de entorno GOOGLE_APPLICATION_CREDENTIALS no está definida o no se ha cargado correctamente.")
+
+    os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = google_credentials_path
     client = vision.ImageAnnotatorClient()
     image_pillow = Image.fromarray(patente_recortada)
 
